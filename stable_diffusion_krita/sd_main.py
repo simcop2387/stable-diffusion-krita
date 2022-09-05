@@ -47,7 +47,7 @@ class ModifierData:
 class SDConfig:
     "This is Stable Diffusion Plugin Main Configuration"     
     url = "http://localhost:7860"
-    type="ws"
+    type="Colab"
     inpaint_mask_blur=4
     inpaint_mask_content="latent noise"     
     width=512
@@ -59,7 +59,7 @@ class SDConfig:
         "steps": 15,
         "steps_update": 50,
         "num": 2,
-        "modifiers": "highly detailed\n digital painting\nartstation\nconcept art\nsharp focus\nillustration, art by artgerm and greg rutkowski\nalphonse mucha\ncgsociety",
+        "modifiers": "highly detailed\n",
         "cfg_value": 7.5,
         "strength": .75,
         "sampling_method":"LMS"
@@ -70,12 +70,13 @@ class SDConfig:
         obj={"url":self.url,"type":self.type,
         "inpaint_mask_blur":self.inpaint_mask_blur, "inpaint_mask_content":self.inpaint_mask_content,
         "width":self.width, "height":self.height,
+        "type": self.type,
         "dlgData":self.dlgData}
         return json.dumps(obj)
     def unserialize(self,str):
         obj=json.loads(str)
         self.url=obj.get("url","http://localhost:7860")
-        self.type=obj.get("type","ws")
+        self.type=obj.get("type","Colab")
         self.dlgData=obj["dlgData"]
         self.inpaint_mask_blur=obj.get("inpaint_mask_blur",4)
         self.inpaint_mask_content=obj.get("inpaint_mask_content","latent noise")
@@ -129,13 +130,21 @@ class SDConfigDialog(QDialog):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
         self.layout = QVBoxLayout()
-        link_label=QLabel('Webservice URL<br>\nYou need running <a href="https://github.com/AUTOMATIC1111/stable-diffusion-webui">AUTOMATIC1111/stable-diffusion-webui </a><br>\nCheck if web interface is working there before you use this plugin.')
+        link_label=QLabel('Webservice URL<br>\nYou need running <a href="https://colab.research.google.com/drive/1BKkFN5OOXydrFAxYJcbPdGrVuQVdJpt_#scrollTo=bYpxm4Fw2tLT">Colab</a><br>\nCheck if web interface is working there before you use this plugin. Use https://xxx.gradio.app link here.')
         link_label.setOpenExternalLinks(True)
         self.layout.addWidget(link_label)
         self.url = QLineEdit()
         self.url.setText(SDConfig.url)    
         self.layout.addWidget(self.url)
+        self.layout.addWidget(QLabel('Type'))
+        self.type = QComboBox()
+        self.type.addItems(['Colab', 'Local'])
+        self.type.setCurrentText(SDConfig.type)
+        self.layout.addWidget(self.type,stretch=1)      
+        self.layout.addWidget(QLabel('For local experimental version you need this fork running <br> <a href="https://github.com/imperator-maximus/stable-diffusion-webui">imperator-maximus/stable-diffusion-webui</a><br>\nIf it gets connection error - this is known issue and I am working on it. If it works fine - let me know :)'))
+
         self.layout.addWidget(QLabel(''))
+        
 
         inpainting_label=QLabel('Inpainting options')
         inpainting_label.setToolTip('You can play around with these two values. Default is 4 and "latent noise"')
@@ -181,6 +190,8 @@ class SDConfigDialog(QDialog):
         SDConfig.inpaint_mask_content=self.inpaint_mask_content.currentText()
         SDConfig.width=int(self.width.text())
         SDConfig.height=int(self.height.text())
+        SDConfig.type=self.type.currentText()
+
         SDConfig.save(SDConfig)
 
 class ModifierDialog(QDialog):
@@ -235,8 +246,6 @@ class ModifierDialog(QDialog):
         h_layout.addWidget(button_save)
         self.layout.addLayout(h_layout)
         button_save.clicked.connect(lambda ch, : ModifierDialog.addModifier(self))
-
-
         self.layout.addWidget(QLabel(""))        
         self.layout.addWidget(self.buttonBox)
     def addModifier(self):        
@@ -417,7 +426,7 @@ class showImages(QDialog):
         self.prompt = QLineEdit()
         self.prompt.setText(SDConfig.dlgData.get("prompt",""))
         prompt_layout.addWidget(self.prompt,stretch=9)
-        btn_regenerate=QPushButton("Generate")         
+        btn_regenerate=QPushButton("Generate with steps "+str(SDConfig.dlgData["steps"]))         
         btn_regenerate.clicked.connect(self.regenerateStart)
         prompt_layout.addWidget(btn_regenerate,stretch=1)
         self.modifiers= ModifierDialog.modifierInput(self,top_layout)
@@ -451,7 +460,7 @@ class showImages(QDialog):
             i=i+1
             
         #layout.addWidget(self.buttonBox)
-        top_layout.addWidget(QLabel("Update with new Steps value"))
+        top_layout.addWidget(QLabel("Update one image with new Steps value"))
         self.steps_update=SDDialog.addSlider(self,top_layout,SDConfig.dlgData.get("steps_update",50),1,250,5,1)
         
         if (p.mode=="img2img"):
@@ -528,6 +537,9 @@ def base64ToQImage(data):
 
 
 async def runSD(p: SDParameters):
+    # dramatic interface change needed!
+    Colab=True
+    if (SDConfig.type=="Local"): Colab=False
     endpoint=SDConfig.url
     endpoint+="/api/predict/" 
     endpoint=endpoint.replace("////","//")
@@ -535,6 +547,7 @@ async def runSD(p: SDParameters):
     else: seed=int(p.seed)
 
     if (p.mode=="img2img"):
+        # localhost
         j={
             "fn_index":8,
             "data":[p.prompt,p.image64,{"image":p.image64,"mask":p.image64},p.steps,p.sampling_method,4,"latent noise",False,"Redraw whole image",
@@ -542,21 +555,32 @@ async def runSD(p: SDParameters):
                     "Inpaint masked","None",8,4,"fill",False,"Seed","","Steps",""
             ]
         }
-        j={
-            "fn_index":8,
-            "data":[p.prompt,p.image64,None,p.steps,p.sampling_method,4,"latent noise",False,"Redraw whole image",
-                    p.num,1,p.cfg_value,p.strength,seed,SDConfig.height,SDConfig.width,"Just resize","RealESRGAN",64,False,
-                    "Inpaint masked","None",False,8,4,"fill","Seed","","Steps",""
-            ]
-        }        
+        # colab
+        if (Colab):
+            j={
+                "fn_index":8,
+                "data":[p.prompt,p.image64,None,p.steps,p.sampling_method,4,"latent noise",False,"Redraw whole image",
+                        p.num,1,p.cfg_value,p.strength,seed,SDConfig.height,SDConfig.width,"Just resize","RealESRGAN",64,False,
+                        "Inpaint masked","None",False,8,4,"fill","Seed","","Steps",""
+                ]
+            }        
 
 
     if (p.mode=="inpainting"):
+        # localhost
         j={
             "fn_index":8,
             "data":[p.prompt,None,{"image":p.image64,"mask":p.maskImage64},p.steps,"Euler a",4,"latent noise",False,"Inpaint a part of image",p.num,1,p.cfg_value,0.75,seed,512,512,
             "Just resize","RealESRGAN",64,False,"Inpaint masked","None",8,4,"fill",False,"Seed","","Steps",""]
         }            
+        # colab
+        if (Colab):
+            j={
+                "fn_index":8,
+                "data":[p.prompt,None,{"image":p.image64,"mask":p.maskImage64},p.steps,"Euler a",4,"latent noise",False,"Inpaint a part of image",p.num,1,p.cfg_value,0.75,seed,512,512,
+                "Just resize","RealESRGAN",64,False,"Inpaint masked","None",False,8,4,"fill","Seed","","Steps",""]
+            }    
+   
 
     if (p.mode=="txt2img"):
         j={
@@ -773,6 +797,6 @@ def expandSelection():
 
 #Inpainting()
 #TxtToImage()
-ImageToImage()
+#ImageToImage()
 #Config()
 #expandSelection()
