@@ -1,21 +1,12 @@
-import asyncio
-
-from asyncio.windows_events import NULL
 from cmd import PROMPT
 import urllib.request
+import http.client
 import json
 from krita import *
 from PyQt5.Qt import QByteArray
 from PyQt5.QtGui  import QImage, QPixmap
 import array
-from copy import copy, deepcopy
-
-import asyncio.events as events
-import os
-import sys
-import threading
-from contextlib import contextmanager, suppress
-from heapq import heappop
+from copy import copy
 from os.path import exists
 
 # Stable Diffusion Plugin fpr Krita
@@ -102,7 +93,7 @@ class SDParameters:
     num =0
     sampling_method="LMS",
     seedList =["","","",""]
-    imageDialog = NULL
+    imageDialog = None
     regenerate = False
     image64=""
     maskImage64=""
@@ -480,7 +471,7 @@ class showImages(QDialog):
         p.prompt= getFullPrompt(self)        
         p.imageDialog=self
         p.regenerate=True
-        asyncio.run(runSD(p))
+        runSD(p)
 
     def updateImages(self,qImgs,seeds):
         i=0
@@ -507,7 +498,7 @@ class showImages(QDialog):
         p.prompt= getFullPrompt(self)        
         self.updateImageNum=num
         p.imageDialog=self
-        asyncio.run(runSD(p))
+        runSD(p)
 
     # update image with HQ version       
     def updateImage(self,qImg):
@@ -521,9 +512,7 @@ def imageResultDialog(qImgs,p):
     dlg = showImages(qImgs,p)
     if dlg.exec():
         print("HQ Update here")
-    else:
-        print("Cancel!")
-    return 3     
+
  
  # convert image from server result into QImage
 def base64ToQImage(data):
@@ -534,15 +523,34 @@ def base64ToQImage(data):
      imagen.loadFromData( bytearr, 'PNG' )      
      return imagen
 
+def getServerData(reqData):
+    endpoint=SDConfig.url
+    endpoint=endpoint.strip("/")
+    endpoint+="/api/predict/" 
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }    
+    try:
+        req = urllib.request.Request(endpoint, reqData, headers)
+        with urllib.request.urlopen(req) as f:
+            res = f.read()
+            return res
+    except http.client.IncompleteRead as e:
+        print("Incomplete Read Exception - better restart Colab or ")
+        res = e.partial 
+        return res           
+    except Exception as e:
+        error_message = traceback.format_exc() 
+        errorMessage("Server Error","Endpoint: "+endpoint+", Reason: "+error_message)        
+        return None
 
 
-async def runSD(p: SDParameters):
+def runSD(p: SDParameters):
     # dramatic interface change needed!
     Colab=True
     if (SDConfig.type=="Local"): Colab=False
-    endpoint=SDConfig.url
-    endpoint+="/api/predict/" 
-    endpoint=endpoint.replace("////","//")
+  
     if (not p.seed): seed=-1
     else: seed=int(p.seed)
 
@@ -587,44 +595,35 @@ async def runSD(p: SDParameters):
             "fn_index":2,
             "data":[p.prompt,"",p.steps,p.sampling_method,False,p.num,1,p.cfg_value,seed,SDConfig.height,SDConfig.width,"None",False,"Seed","","Steps",""]
         }           
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
+
     #print(j)
     data = json.dumps(j).encode("utf-8")
-    try:
-        req = urllib.request.Request(endpoint, data, headers)
-        with urllib.request.urlopen(req) as f:
-            res = f.read()
-        response=json.loads(res)
-        images = [0]*p.num
-        p.seedList=[0]*p.num
-        s=response["data"][1]
-        info=json.loads(s)
-        print("seed",info["seed"])
+    res=getServerData(data)
+    if not res: return
+    response=json.loads(res)
+    images = [0]*p.num
+    p.seedList=[0]*p.num
+    s=response["data"][1]
+    info=json.loads(s)
 
-        firstSeed=int(info["seed"])
-        if (p.num==1):
-            data = response["data"][0][0] # first image
-            p.seedList[0]=str(int(firstSeed))
-            images[0]=base64ToQImage(data)
-        else:
-            for i in range(0,p.num):
-                data = response["data"][0][i+1] # first image
-                p.seedList[i]=str(int(firstSeed)+i)
-                images[i]=base64ToQImage(data)
-        if (p.imageDialog):                 # only refresh image
-            if (p.regenerate):
-                print("generate new")
-                p.imageDialog.updateImages(images,p.seedList)
-            else:  
-                p.imageDialog.updateImage(images[0])
-        return images
-    except  Exception as e:
-            error_message = traceback.format_exc() 
-            errorMessage("Couldn't connect to server","Unable to make connection to "+endpoint+", Reason: "+error_message)
-            return False
+    firstSeed=int(info["seed"])
+    if (p.num==1):
+        data = response["data"][0][0] # first image
+        p.seedList[0]=str(int(firstSeed))
+        images[0]=base64ToQImage(data)
+    else:
+        for i in range(0,p.num):
+            data = response["data"][0][i+1] # first image
+            p.seedList[i]=str(int(firstSeed)+i)
+            images[i]=base64ToQImage(data)
+    if (p.imageDialog):                 # only refresh image
+        if (p.regenerate):
+            print("generate new")
+            p.imageDialog.updateImages(images,p.seedList)
+        else:  
+            p.imageDialog.updateImage(images[0])
+    return images
+
 
 def getDocument():
     d = Application.activeDocument()
@@ -671,7 +670,7 @@ def TxtToImage():
         p.num=data["num"]
         p.sampling_method=data["sampling_method"]
         p.cfg_value=data["cfg_value"]
-        images = asyncio.run(runSD(p))
+        images = runSD(p)
         imageResultDialog( images,p)
 
 
@@ -707,7 +706,7 @@ def ImageToImage():
         p.cfg_value=data["cfg_value"]
         p.image64=image64
         p.strength=data["strength"]
-        images = asyncio.run(runSD(p))
+        images = runSD(p)
         imageResultDialog( images,p)
 
 
@@ -773,7 +772,7 @@ def Inpainting():
         p.cfg_value=data["cfg_value"]
         p.image64=image64
         p.maskImage64=maskImage64
-        images = asyncio.run(runSD(p))
+        images = runSD(p)
         imageResultDialog( images,p)
 
 # config dialog
