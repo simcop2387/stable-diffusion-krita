@@ -121,18 +121,18 @@ class SDConfigDialog(QDialog):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
         self.layout = QVBoxLayout()
-        link_label=QLabel('Webservice URL<br>\nYou need running <a href="https://colab.research.google.com/drive/1BKkFN5OOXydrFAxYJcbPdGrVuQVdJpt_#scrollTo=bYpxm4Fw2tLT">Colab</a><br>\nCheck if web interface is working there before you use this plugin. Use https://xxx.gradio.app link here.')
+        link_label=QLabel('Webservice URL<br>\nYou need running <a href="https://colab.research.google.com/drive/1eq-VF2dRHgxNjtPX5iZbDPuwtfJIEhtx#scrollTo=bYpxm4Fw2tLT">Colab with new API</a><br>\nCheck if web interface is working there before you use this plugin. Use http://xxxx.ngrok.io link here.')
         link_label.setOpenExternalLinks(True)
         self.layout.addWidget(link_label)
         self.url = QLineEdit()
         self.url.setText(SDConfig.url)    
         self.layout.addWidget(self.url)
-        self.layout.addWidget(QLabel('Type'))
-        self.type = QComboBox()
-        self.type.addItems(['Colab', 'Local'])
-        self.type.setCurrentText(SDConfig.type)
-        self.layout.addWidget(self.type,stretch=1)      
-        self.layout.addWidget(QLabel('For local experimental version you need this fork running <br> <a href="https://github.com/imperator-maximus/stable-diffusion-webui">imperator-maximus/stable-diffusion-webui</a><br>\nIf it gets connection error - this is known issue and I am working on it. If it works fine - let me know :)'))
+ #       self.layout.addWidget(QLabel('Type'))
+ #       self.type = QComboBox()
+ #       self.type.addItems(['Colab', 'Local'])
+#        self.type.setCurrentText(SDConfig.type)
+#        self.layout.addWidget(self.type,stretch=1)      
+        self.layout.addWidget(QLabel('For local version you need this fork running <br> <a href="https://github.com/imperator-maximus/stable-diffusion-webui">imperator-maximus/stable-diffusion-webui</a><br>\n start api.bat there'))
 
         self.layout.addWidget(QLabel(''))
         
@@ -181,7 +181,7 @@ class SDConfigDialog(QDialog):
         SDConfig.inpaint_mask_content=self.inpaint_mask_content.currentText()
         SDConfig.width=int(self.width.text())
         SDConfig.height=int(self.height.text())
-        SDConfig.type=self.type.currentText()
+     #   SDConfig.type=self.type.currentText()
 
         SDConfig.save(SDConfig)
 
@@ -516,7 +516,7 @@ def imageResultDialog(qImgs,p):
  
  # convert image from server result into QImage
 def base64ToQImage(data):
-     data=data.split(",")[1] # get rid of data:image/png,
+  #   data=data.split(",")[1] # get rid of data:image/png,
      image64 = data.encode('ascii')
      imagen = QtGui.QImage()
      bytearr = QtCore.QByteArray.fromBase64( image64 )
@@ -526,7 +526,7 @@ def base64ToQImage(data):
 def getServerData(reqData):
     endpoint=SDConfig.url
     endpoint=endpoint.strip("/")
-    endpoint+="/api/predict/" 
+    endpoint+="/api/" 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -553,67 +553,46 @@ def runSD(p: SDParameters):
   
     if (not p.seed): seed=-1
     else: seed=int(p.seed)
-
-    if (p.mode=="img2img"):
-        # localhost
-        j={
-            "fn_index":8,
-            "data":[p.prompt,p.image64,{"image":p.image64,"mask":p.image64},p.steps,p.sampling_method,4,"latent noise",False,"Redraw whole image",
-                    p.num,1,p.cfg_value,p.strength,seed,SDConfig.height,SDConfig.width,"Just resize","RealESRGAN",64,True,
-                    "Inpaint masked","None",8,4,"fill",False,"Seed","","Steps",""
-            ]
-        }
-        # colab
-        if (Colab):
-            j={
-                "fn_index":8,
-                "data":[p.prompt,p.image64,None,p.steps,p.sampling_method,4,"latent noise",False,"Redraw whole image",
-                        p.num,1,p.cfg_value,p.strength,seed,SDConfig.height,SDConfig.width,"Just resize","RealESRGAN",64,False,
-                        "Inpaint masked","None",False,8,4,"fill","Seed","","Steps",""
-                ]
-            }        
-
-
-    if (p.mode=="inpainting"):
-        # localhost
-        j={
-            "fn_index":8,
-            "data":[p.prompt,None,{"image":p.image64,"mask":p.maskImage64},p.steps,"Euler a",4,"latent noise",False,"Inpaint a part of image",p.num,1,p.cfg_value,0.75,seed,512,512,
-            "Just resize","RealESRGAN",64,False,"Inpaint masked","None",8,4,"fill",False,"Seed","","Steps",""]
-        }            
-        # colab
-        if (Colab):
-            j={
-                "fn_index":8,
-                "data":[p.prompt,None,{"image":p.image64,"mask":p.maskImage64},p.steps,"Euler a",4,"latent noise",False,"Inpaint a part of image",p.num,1,p.cfg_value,0.75,seed,512,512,
-                "Just resize","RealESRGAN",64,False,"Inpaint masked","None",False,8,4,"fill","Seed","","Steps",""]
-            }    
-   
-
-    if (p.mode=="txt2img"):
-        j={
-            "fn_index":2,
-            "data":[p.prompt,"",p.steps,p.sampling_method,False,p.num,1,p.cfg_value,seed,SDConfig.height,SDConfig.width,"None",False,"Seed","","Steps",""]
-        }           
+    j = {'prompt': p.prompt, \
+        'mode': p.mode, \
+        'initimage': {'image':p.image64, 'mask':p.maskImage64}, \
+        'steps':p.steps, \
+        'sampler':p.sampling_method, \
+        'mask_blur': SDConfig.inpaint_mask_blur, \
+        'inpainting_fill':SDConfig.inpaint_mask_content, \
+        'use_gfpgan': False, \
+        'batch_count': p.num, \
+        'cfg_scale': p.cfg_value, \
+        'denoising_strength': p.strength, \
+        'seed':seed, \
+        'height':SDConfig.height, \
+        'width':SDConfig.width, \
+        'resize_mode': 0, \
+        'upscaler':'RealESRGAN', \
+        'upscale_overlap':64, \
+        'inpaint_full_res':True, \
+        'inpainting_mask_invert': 0 \
+        }    
 
     #print(j)
     data = json.dumps(j).encode("utf-8")
     res=getServerData(data)
-    if not res: return
+    if not res: return    
     response=json.loads(res)
+  #  print(response)
     images = [0]*p.num
     p.seedList=[0]*p.num
-    s=response["data"][1]
+    s=response["info"]
     info=json.loads(s)
 
     firstSeed=int(info["seed"])
     if (p.num==1):
-        data = response["data"][0][0] # first image
+        data = response["images"][0] # first image
         p.seedList[0]=str(int(firstSeed))
         images[0]=base64ToQImage(data)
     else:
         for i in range(0,p.num):
-            data = response["data"][0][i+1] # first image
+            data = response["images"][i+1] # first image
             p.seedList[i]=str(int(firstSeed)+i)
             images[i]=base64ToQImage(data)
     if (p.imageDialog):                 # only refresh image
@@ -689,6 +668,7 @@ def ImageToImage():
     ba=data.toBase64()
     DataAsString=str(ba,"ascii")
     image64 = "data:image/png;base64,"+DataAsString
+    image64 = DataAsString
     
     dlg = SDDialog("img2img",image)
     dlg.resize(900,200)
@@ -725,8 +705,9 @@ def Inpainting():
     image.save(buf, 'PNG')
     ba=data.toBase64()
     DataAsString=str(ba,"ascii")
-    image64 = "data:image/png;base64,"+DataAsString
-    
+    #image64 = "data:image/png;base64,"+DataAsString
+    image64 = DataAsString
+
     maskImage=QPixmap(image.width(), image.height()).toImage()
     maskImage = maskImage.convertToFormat(QImage.Format_ARGB32)
     # generate mask image
@@ -753,7 +734,8 @@ def Inpainting():
     maskImage.save(buf, 'PNG')
     ba=data.toBase64()
     DataAsString=str(ba,"ascii")
-    maskImage64 = "data:image/png;base64,"+DataAsString
+   # maskImage64 = "data:image/png;base64,"+DataAsString
+    maskImage64 =DataAsString
     SDConfig.load(SDConfig)
     image = image.scaled(380,380, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # preview smaller
     dlg = SDDialog("inpainting",image)
@@ -799,3 +781,4 @@ def expandSelection():
 #ImageToImage()
 #Config()
 #expandSelection()
+
