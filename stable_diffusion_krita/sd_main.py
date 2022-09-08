@@ -100,7 +100,8 @@ class SDParameters:
     sampling_method="LMS"
     inpaint_mask_blur=4
     inpaint_mask_content="latent noise" 
-    mode="txt2img"    
+    mode="txt2img"
+    strength = 1 
 
 def errorMessage(text,detailed):
     msgBox= QMessageBox()
