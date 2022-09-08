@@ -37,7 +37,7 @@ class ModifierData:
 
 class SDConfig:
     "This is Stable Diffusion Plugin Main Configuration"     
-    url = "http://localhost:7860"
+    url = "http://localhost:5000"
     type="Colab"
     inpaint_mask_blur=4
     inpaint_mask_content="latent noise"     
@@ -91,6 +91,7 @@ class SDParameters:
     steps = 0
     seed = 0
     num =0
+    strength=1.0
     sampling_method="LMS",
     seedList =["","","",""]
     imageDialog = None
@@ -550,7 +551,6 @@ def runSD(p: SDParameters):
     # dramatic interface change needed!
     Colab=True
     if (SDConfig.type=="Local"): Colab=False
-  
     if (not p.seed): seed=-1
     else: seed=int(p.seed)
     j = {'prompt': p.prompt, \
