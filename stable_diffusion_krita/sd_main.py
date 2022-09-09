@@ -7,14 +7,13 @@ from PyQt5.Qt import QByteArray
 from PyQt5.QtGui  import QImage, QPixmap
 import array
 from copy import copy
-from os.path import exists
+from pathlib import Path
 
 # Stable Diffusion Plugin fpr Krita
 # (C) 2022, Nicolay Mausz
 # MIT License
 #
-rPath= Krita.instance().readSetting("","ResourceDirectory","")
-
+rPath= Path(Krita.instance().readSetting("","ResourceDirectory",""))
 class ModifierData:    
     list=[]
     tags=[]
@@ -27,12 +26,12 @@ class ModifierData:
         self.tags=obj["tags"]
     def save(self):
         str=self.serialize(self)
-        with open(rPath+"/krita_ai_modifiers.config", 'w', encoding='utf-8') as f_out:
+        with open(rPath / "krita_ai_modifiers.config", 'w', encoding='utf-8') as f_out:
             f_out.write(str)
     def load(self):
-        if (not exists(rPath+"/krita_ai_modifiers.config")): return
-        with open(rPath+"/krita_ai_modifiers.config", 'r', encoding='utf-8') as f_in:
-            str=f_in.read()
+        if (not (rPath / "krita_ai_modifiers.config").exists()): return
+        with open(rPath / "krita_ai_modifiers.config", 'r', encoding='utf-8') as f_in:
+             str=f_in.read()
         self.unserialize(self,str)    
 
 class SDConfig:
@@ -75,11 +74,11 @@ class SDConfig:
         self.height=obj.get("height",512)
     def save(self):
         str=self.serialize(self)
-        with open(rPath+"/krita_ai.config", 'w', encoding='utf-8') as f_out:
+        with open(rPath / "krita_ai.config", 'w', encoding='utf-8') as f_out:
             f_out.write(str)
     def load(self):
-        if (not exists(rPath+"/krita_ai.config")): return
-        with open(rPath+"/krita_ai.config", 'r', encoding='utf-8') as f_in:
+        if (not (rPath / "krita_ai_modifiers.config").exists()): return
+        with open(rPath / "krita_ai.config", 'r', encoding='utf-8') as f_in:
             str=f_in.read()
         self.unserialize(self,str)
 
@@ -307,7 +306,7 @@ class SDDialog(QDialog):
         self.prompt.setText(data["prompt"])            
         formLayout.addWidget(self.prompt)
         self.modifiers= ModifierDialog.modifierInput(self,formLayout)
-        if (data["mode"]=="img2img"):
+        if (data["mode"] in ("img2img", "inpainting")):
             formLayout.addWidget(QLabel("Denoising Strength"))        
             self.strength=self.addSlider(formLayout,data["strength"]*100,0,100,1,100)
 
@@ -378,7 +377,7 @@ class SDDialog(QDialog):
         SDConfig.dlgData["modifiers"]=self.modifiers.toPlainText()
         SDConfig.dlgData["sampling_method"]=self.sampling_method.currentText()
         
-        if SDConfig.dlgData["mode"]=="img2img": 
+        if SDConfig.dlgData["mode"] in ("img2img", "inpainting"):
             SDConfig.dlgData["strength"]=self.strength.value()/100
         SDConfig.save(SDConfig)
 # put image in Krita on new layer or existing one
@@ -456,7 +455,7 @@ class showImages(QDialog):
         top_layout.addWidget(QLabel("Update one image with new Steps value"))
         self.steps_update=SDDialog.addSlider(self,top_layout,SDConfig.dlgData.get("steps_update",50),1,250,5,1)
         
-        if (p.mode=="img2img"):
+        if (p.mode in ("img2img", "inpainting")):
             top_layout.addWidget(QLabel("Update with new Strengths value"))
             self.strength_update=SDDialog.addSlider(self,top_layout,SDConfig.dlgData.get("strength",0.5)*100,0,100,1,100)
 
@@ -489,7 +488,7 @@ class showImages(QDialog):
     def updateImageStart(self,num):
         p = copy(self.SDParam)
         p.seed=p.seedList[num]
-        if (p.mode=="img2img"): 
+        if (p.mode in ("img2img", "inpainting")): 
             p.strength=self.strength_update.value()/100
         SDConfig.dlgData["steps_update"]=self.steps_update.value()
         SDConfig.save(SDConfig)
@@ -554,13 +553,16 @@ def runSD(p: SDParameters):
     if (SDConfig.type=="Local"): Colab=False
     if (not p.seed): seed=-1
     else: seed=int(p.seed)
+    inpainting_fill_options= ['fill', 'original', 'latent noise', 'latent nothing']
+    inpainting_fill=inpainting_fill_options.index(SDConfig.inpaint_mask_content)
+    print(inpainting_fill)
     j = {'prompt': p.prompt, \
         'mode': p.mode, \
         'initimage': {'image':p.image64, 'mask':p.maskImage64}, \
         'steps':p.steps, \
         'sampler':p.sampling_method, \
         'mask_blur': SDConfig.inpaint_mask_blur, \
-        'inpainting_fill':SDConfig.inpaint_mask_content, \
+        'inpainting_fill':inpainting_fill, \
         'use_gfpgan': False, \
         'batch_count': p.num, \
         'cfg_scale': p.cfg_value, \
@@ -624,12 +626,18 @@ def getSelection():
     return s      
 
 def getFullPrompt(dlg):
-    modifiers=dlg.modifiers.toPlainText().replace("\n", ", ")
+    modifiers=""
+    list=dlg.modifiers.toPlainText().split("\n")
+    for i in range(0,len(list)):
+        m=list[i]
+        if (m and m[0]!="#"): modifiers+=", "+m
+
+   # modifiers=dlg.modifiers.toPlainText().replace("\n", ", ")
     prompt=dlg.prompt.text()
     if (not prompt):      
         errorMessage("Empty prompt","Type some text in prompt input box about what you want to see.")
         return ""
-    prompt+=", "+modifiers
+    prompt+=modifiers
     return prompt
 
 def TxtToImage():
@@ -662,7 +670,6 @@ def ImageToImage():
     image=QImage(data.data(),s.width(),s.height(),QImage.Format_RGBA8888).rgbSwapped()
     if (s.width()>512 or s.height()>512):   # max 512x512
         image = image.scaled(512,512, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    print(image.width(),image.height())
     data = QByteArray()
     buf = QBuffer(data)
     image.save(buf, 'PNG')
@@ -753,6 +760,7 @@ def Inpainting():
         p.seed=data["seed"]
         p.num=data["num"]
         p.cfg_value=data["cfg_value"]
+        p.strength=data["strength"]
         p.image64=image64
         p.maskImage64=maskImage64
         images = runSD(p)
