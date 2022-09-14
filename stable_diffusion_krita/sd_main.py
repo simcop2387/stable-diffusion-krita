@@ -36,7 +36,7 @@ class ModifierData:
 
 class SDConfig:
     "This is Stable Diffusion Plugin Main Configuration"     
-    url = "http://localhost:5000"
+    url = "http://localhost:7860/v1/kapi"
     type="Colab"
     inpaint_mask_blur=4
     inpaint_mask_content="latent noise"     
@@ -527,7 +527,7 @@ def base64ToQImage(data):
 def getServerData(reqData):
     endpoint=SDConfig.url
     endpoint=endpoint.strip("/")
-    endpoint+="/api/" 
+    endpoint+="/"+reqData["mode"] 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
