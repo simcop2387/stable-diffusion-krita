@@ -8,6 +8,7 @@ from PyQt5.QtGui  import QImage, QPixmap
 import array
 from copy import copy
 from pathlib import Path
+import base64
 
 # Stable Diffusion Plugin fpr Krita
 # (C) 2022, Nicolay Mausz
@@ -41,7 +42,10 @@ class SDConfig:
     inpaint_mask_blur=4
     inpaint_mask_content="latent noise"     
     width=512
-    height=512    
+    height=512
+    username=""
+    password=""
+    auth_type="None"
     dlgData={
         "mode": "txt2img",
         "prompt": "",
@@ -59,13 +63,14 @@ class SDConfig:
     def serialize(self):
         obj={"url":self.url,"type":self.type,
         "inpaint_mask_blur":self.inpaint_mask_blur, "inpaint_mask_content":self.inpaint_mask_content,
+        "username": self.username, "password": self.password, "auth_type": self.auth_type,
         "width":self.width, "height":self.height,
         "type": self.type,
         "dlgData":self.dlgData}
         return json.dumps(obj)
     def unserialize(self,str):
         obj=json.loads(str)
-        self.url=obj.get("url","http://localhost:7860")
+        self.url=obj.get("url","http://localhost:7860/v1/kapi")
         self.type=obj.get("type","Colab")
         self.dlgData=obj["dlgData"]
         self.inpaint_mask_blur=obj.get("inpaint_mask_blur",4)
@@ -87,6 +92,7 @@ SDConfig.load(SDConfig)
 class SDParameters:
     "This is Stable Diffusion Parameter Class"     
     prompt = ""
+    negative_prompt = ""
     steps = 0
     seed = 0
     num =0
@@ -128,6 +134,20 @@ class SDConfigDialog(QDialog):
         self.url = QLineEdit()
         self.url.setText(SDConfig.url)    
         self.layout.addWidget(self.url)
+        
+        self.url_user = QLineEdit()
+        self.url_pass = QLineEdit()
+        self.use_auth = QComboBox()
+        
+        self.use_auth.addItems(["None", "HTTP Basic Auth", "Other?"])
+        self.layout.addWidget(QLabel('Auth type'))
+        self.layout.addWidget(self.use_auth)
+
+ 
+        self.layout.addWidget(QLabel('Username'))
+        self.layout.addWidget(self.url_user)
+        self.layout.addWidget(QLabel('Password'))
+        self.layout.addWidget(self.url_pass)
  #       self.layout.addWidget(QLabel('Type'))
  #       self.type = QComboBox()
  #       self.type.addItems(['Colab', 'Local'])
@@ -178,6 +198,9 @@ class SDConfigDialog(QDialog):
         self.resize(500,200)
     def save(self):
         SDConfig.url=self.url.text()
+        SDConfig.username=self.url_user.text()
+        SDConfig.password=self.url_pass.text()
+        SDConfig.auth_type=str(self.use_auth.currentText())
         SDConfig.inpaint_mask_blur=int(self.inpaint_mask_blur.text())
         SDConfig.inpaint_mask_content=self.inpaint_mask_content.currentText()
         SDConfig.width=int(self.width.text())
@@ -532,8 +555,15 @@ def getServerData(reqData, reqType):
         "Content-Type": "application/json",
         "Accept": "application/json",
     }    
+    if SDConfig.auth_type == "HTTP Basic Auth":
+        authstring =f"%s:%s" % (SDConfig.username, SDConfig.password)
+        authraw = b"Basic " + base64.b64encode(authstring.encode('utf-8'))
+        headers["Authorization"] = authraw
+
     try:
         req = urllib.request.Request(endpoint, reqData, headers)
+        
+
         with urllib.request.urlopen(req) as f:
             res = f.read()
             return res
