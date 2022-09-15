@@ -524,10 +524,10 @@ def base64ToQImage(data):
      imagen.loadFromData( bytearr, 'PNG' )      
      return imagen
 
-def getServerData(reqData):
+def getServerData(reqData, reqType):
     endpoint=SDConfig.url
     endpoint=endpoint.strip("/")
-    endpoint+="/"+reqData["mode"] 
+    endpoint+="/"+reqType
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -540,7 +540,7 @@ def getServerData(reqData):
     except http.client.IncompleteRead as e:
         print("Incomplete Read Exception - better restart Colab or ")
         res = e.partial 
-        return res           
+        return res
     except Exception as e:
         error_message = traceback.format_exc() 
         errorMessage("Server Error","Endpoint: "+endpoint+", Reason: "+error_message)        
@@ -579,7 +579,7 @@ def runSD(p: SDParameters):
 
     #print(j)
     data = json.dumps(j).encode("utf-8")
-    res=getServerData(data)
+    res=getServerData(data, p.mode)
     if not res: return    
     response=json.loads(res)
   #  print(response)
